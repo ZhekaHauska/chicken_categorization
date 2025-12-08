@@ -20,6 +20,8 @@ class HMMFitter:
         self.lock_emission = None
         self.components_per_state = None
         self.model = None
+        self.scores = None
+        self.startprob_ = None
 
     def fit_model(
         self,
@@ -64,7 +66,7 @@ class HMMFitter:
             lengths = [self.X.shape[1]] * self.X.shape[0]
 
         n_possible_obs = np.unique(X).size
-        print(f'total data points: {len(X)}, obs states: {n_possible_obs}')
+        print(f'Total data points: {len(X)}, obs states: {n_possible_obs}')
 
         components_per_state = None
         if account_frequencies:
@@ -77,12 +79,12 @@ class HMMFitter:
         best_score = best_model = None
 
         model_scores = {
-            'idx': [],
+            'seed': [],
             'n_comp': [],
             'score': [],
-            }
-
-        model_scores = pd.DataFrame(model_scores).set_index('idx')
+            'aic': [],
+            'bic': []
+        }
 
         for n in tqdm(n_components):
             if self.lock_emission:
@@ -114,6 +116,7 @@ class HMMFitter:
                     for i in range(len(diag)):
                         emprob[i, diag[i]] = 1
 
+            print(f'Components f{n}, total parameters: {n ** 2 + int(not self.lock_emission) * n * n_possible_obs}')
             for seed in seeds:
                 if self.lock_emission:
                     model = CategoricalHMM(
@@ -140,16 +143,24 @@ class HMMFitter:
                     X,
                     lengths=lengths
                 )
-                score = model.score(X, lengths=lengths)/np.sum(lengths)
-                model_scores.loc[len(model_scores)+1] = [n, score]
-                if best_score is None or score > best_score:
+                score = model.score(X, lengths=lengths) / np.sum(lengths)
+                aic = model.aic(X, lengths=lengths) / np.sum(lengths)
+                bic = model.bic(X, lengths=lengths) / np.sum(lengths)
+                model_scores['seed'].append(seed)
+                model_scores['n_comp'].append(n)
+                model_scores['score'].append(score)
+                model_scores['aic'].append(aic)
+                model_scores['bic'].append(bic)
+
+                if best_score is None or bic < best_score:
                     best_model = model
-                    best_score = score
+                    best_score = bic
                     self.components_per_state = components_per_state
 
         self.model = best_model
-        self.scores = model_scores
+        self.scores = pd.DataFrame(model_scores)
         self.startprob_ = best_model.startprob_
+        return model_scores
 
     def draw_heatmap(self, matrix_type, ax, add_title = ''):
         """
@@ -177,31 +188,3 @@ class HMMFitter:
                 ax.set_yticks(np.cumsum(self.components_per_state))
                 ax.set_xticklabels(sorted(np.unique(self.X)))
                 ax.set_yticklabels(sorted(np.unique(self.X)))
-
-    def bar_scores(self, ax):
-        '''
-        ax: matplotlib.axes
-        '''
-        df = pd.concat([self.scores.groupby(by = 'n_comp').mean().rename(columns={'score':'mean_score'}), self.scores.groupby(by = 'n_comp').std().rename(columns={'score':'std_score'})], axis = 1)
-        df['number_components'] = df.index
-        df['idx'] = np.arange(len(df))
-        df.set_index('idx', inplace=True)
-
-        barplot = sns.barplot(x='number_components', y='mean_score', data=df, color='lightblue', errorbar=None, ax = ax)
-
-        # Add error bars
-        for index, row in df.iterrows():
-            ax.errorbar(x=index, y=row['mean_score'], yerr=row['std_score'], fmt='none', color='black', capsize=5)
-        ax.set_title('Average scores')
-        ax.set_xlabel('number of components')
-        ax.set_ylabel('score')
-
-    def predict_distr_for_all(self, obs_seq, uniform_initial = False):
-        # print(self.model.startprob_prior)
-        if uniform_initial:
-            self.model.startprob_ = np.ones(self.model.transmat_.shape[0])/self.model.transmat_.shape[0]
-        else:
-            self.model.startprob_ = self.startprob_
-        last_state_proba = self.model.predict_proba(obs_seq.reshape(-1,1))
-        # print(self.model.emissionprob_.T.shape, self.model.transmat_.T.shape, last_state_proba.shape)
-        return np.matmul(self.model.emissionprob_.T, np.matmul(self.model.transmat_.T, last_state_proba.T))

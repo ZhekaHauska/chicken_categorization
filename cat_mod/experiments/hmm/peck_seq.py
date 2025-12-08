@@ -38,7 +38,7 @@ def main():
         # seeds = [42],
         max_iter=1000,
         tol=0.1,
-        filter_colors = [0],
+        #filter_colors = [0],
         account_frequencies=False,
         max_cells_per_column=20,
         min_cells_per_column=2,
@@ -50,13 +50,26 @@ def main():
         **conf
     )
 
-    plt.errorbar(
+    fig, ax = plt.subplots()
+    ax.errorbar(
         pd.unique(model_wrapper.scores['n_comp']),
         model_wrapper.scores.groupby(model_wrapper.scores['n_comp']).mean().to_numpy().flatten(),
         yerr=model_wrapper.scores.groupby(model_wrapper.scores['n_comp']).std().to_numpy().flatten(),
         label='unshuffled'
     )
-
+    ax2 = ax.twinx()
+    ax2.errorbar(
+        pd.unique(model_wrapper.scores['n_comp']),
+        model_wrapper.aic.groupby(model_wrapper.scores['n_comp']).mean().to_numpy().flatten(),
+        yerr=model_wrapper.aic.groupby(model_wrapper.scores['n_comp']).std().to_numpy().flatten(),
+        label='unshuffled'
+    )
+    ax2.errorbar(
+        pd.unique(model_wrapper.scores['n_comp']),
+        model_wrapper.bic.groupby(model_wrapper.scores['n_comp']).mean().to_numpy().flatten(),
+        yerr=model_wrapper.bic.groupby(model_wrapper.scores['n_comp']).std().to_numpy().flatten(),
+        label='unshuffled'
+    )
     rng = np.random.default_rng()
     X_shuffled = rng.permuted(X, axis=1)
 
@@ -74,7 +87,7 @@ def main():
     plt.xticks(pd.unique(model_wrapper.scores['n_comp']))
     plt.xlabel('n components')
     plt.ylabel('score')
-    plt.xscale('log')
+    # plt.xscale('log')
     plt.legend()
     plt.show()
 
