@@ -14,3 +14,4 @@ scikit-learn
 tqdm
 bokeh
 plotly
+openpyxl
